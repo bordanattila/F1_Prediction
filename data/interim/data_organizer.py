@@ -9,64 +9,16 @@ class DataOrganizer:
 
     # Normalize common column names
     def standardize_cols(self, df):
-        '''
-
-        Args:
-            df (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        '''
+        """
+        Standardizes column names by stripping whitespace, replacing spaces with underscores, and converting to lowercase.
+        """
         df.columns = [col.strip().replace(' ', '_').lower() for col in df.columns]
         return df
 
-    def organize_session_data(self, year: int, grand_prix: str, session_type: str):
-        '''
-        Organizes raw session data into a structured format.
-
-        Args:
-            year (int): The year of the season.
-            grand_prix (str): The name of the grand prix.
-            session_type (str): The type of session ('FP1', 'FP2', 'FP3', 'Q', 'S', 'SS', 'SQ', 'R').
-        '''
-        grand_prix = grand_prix.replace(' ', '_')
-
-        # Define file paths
-        laps_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_laps.csv')
-        weather_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_weather.csv')
-        results_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_results.csv')
-        track_status_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_track_status.csv')
-        session_info_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_session_info.csv')           
-
-        # Load raw data
-        laps_df = pd.read_csv(laps_file)
-        weather_df = pd.read_csv(weather_file)
-        results_df = pd.read_csv(results_file)
-        track_status_df = pd.read_csv(track_status_file)
-        session_info_df = pd.read_csv(session_info_file)
-
-        # Standardize column names
-        laps_df = self.standardize_cols(laps_df)
-        weather_df = self.standardize_cols(weather_df)
-        results_df = self.standardize_cols(results_df)
-        track_status_df = self.standardize_cols(track_status_df)
-        session_info_df = self.standardize_cols(session_info_df)
-
-        # Merge data from cv files under a shared key into one DataFrame
-        print('INFO: Confirm sessionkey to dataframes')
-        print(session_info_df.head())
-        print('Session Key:', session_info_df['sessionkey'].iloc[0])
-        session_info_df = session_info_df.drop(columns=['unnamed:_0'], errors='ignore')
-
-        print('INFO: Merging dataframes by key')
-        for merged_df in [laps_df, weather_df, results_df, track_status_df]:
-            merged_df['sessionkey'] = session_info_df['sessionkey'].iloc[0]
-
-        print('INFO: Results DataFrame')
-        print('************ Results DataFrame Head ***********')
-        print(results_df.head())
-        results_df = results_df.drop(columns=['unnamed:_0', 'country_code'], errors='ignore')
-
+    def aggregate_weather_data(self, weather_df: pd.DataFrame):
+        """
+        Aggregates weather data by calculating mean, min, max, and variability for key weather parameters.
+        """
         # Aggregate weather data 
         print('INFO: Aggregating weather data')
         print('************ Weather DataFrame Head ***********')
@@ -106,6 +58,12 @@ class DataOrganizer:
         # Merge aggregated weather data with variability
         weather_aggregated = weather_aggregated.merge(weather_variability, on='sessionkey', how='left')
 
+        return weather_aggregated
+    
+    def aggregate_track_status_data(self, track_status_df: pd.DataFrame):
+        """
+        Aggregates track status data by calculating counts and durations of different track statuses.
+        """
         # Convert Time column of track_status_df
         print('INFO: Aggregating track status data')
         print('************ Track Status DataFrame Head ***********')
@@ -152,8 +110,14 @@ class DataOrganizer:
         track_status_aggregated['not_green_duration_in_seconds'] = track_status_aggregated['not_green_duration'].dt.total_seconds()
         track_status_aggregated['total_duration_in_seconds'] = track_status_aggregated['total_duration'].dt.total_seconds()
 
-        track_status_aggregated['disruption_ratio'] = track_status_aggregated['not_green_duration_in_seconds'] / track_status_aggregated['total_duration_in_seconds']
+        track_status_aggregated['disruption_ratio'] = track_status_aggregated['not_green_duration_in_seconds'] / track_status_aggregated['total_duration_in_seconds'].replace(0, 1)  # Avoid division by zero
 
+        return track_status_aggregated
+    
+    def aggregate_laps_data(self, laps_df: pd.DataFrame):
+        """
+        Aggregates laps data by calculating statistics for lap times and other performance metrics.
+        """
         # Aggragate laps data
         print('INFO: Aggregating laps data')
         print('************ Laps DataFrame ***********')
@@ -182,8 +146,58 @@ class DataOrganizer:
             )
         )
 
-        output_file = os.path.join(self.organized_data_dir, f'{year}_{grand_prix}_{session_type}_laps.csv')
-        laps_aggregated.to_csv(output_file, index=False)
+        return laps_aggregated
+
+    def organize_session_data(self, year: int, grand_prix: str, session_type: str):
+        """
+        Organizes raw session data into a structured format.
+
+        Args:
+            year (int): The year of the season.
+            grand_prix (str): The name of the grand prix.
+            session_type (str): The type of session ('FP1', 'FP2', 'FP3', 'Q', 'S', 'SS', 'SQ', 'R').
+        """
+        grand_prix = grand_prix.replace(' ', '_')
+
+        # Define file paths
+        laps_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_laps.csv')
+        weather_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_weather.csv')
+        results_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_results.csv')
+        track_status_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_track_status.csv')
+        session_info_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_session_info.csv')           
+
+        # Load raw data
+        laps_df = pd.read_csv(laps_file)
+        weather_df = pd.read_csv(weather_file)
+        results_df = pd.read_csv(results_file)
+        track_status_df = pd.read_csv(track_status_file)
+        session_info_df = pd.read_csv(session_info_file)
+
+        # Standardize column names
+        laps_df = self.standardize_cols(laps_df)
+        weather_df = self.standardize_cols(weather_df)
+        results_df = self.standardize_cols(results_df)
+        track_status_df = self.standardize_cols(track_status_df)
+        session_info_df = self.standardize_cols(session_info_df)
+
+        # Merge data from cv files under a shared key into one DataFrame
+        print('INFO: Confirm sessionkey to dataframes')
+        print(session_info_df.head())
+        print('Session Key:', session_info_df.copy()['sessionkey'].iloc[0])
+        session_info_df = session_info_df.drop(columns=['unnamed:_0'], errors='ignore')
+
+        print('INFO: Merging dataframes by key')
+        for merged_df in [laps_df.copy(), weather_df.copy(), results_df.copy(), track_status_df.copy()]:
+            merged_df['sessionkey'] = session_info_df['sessionkey'].iloc[0]
+
+        print('INFO: Results DataFrame')
+        print('************ Results DataFrame Head ***********')
+        print(results_df.head())
+        results_df = results_df.drop(columns=['unnamed:_0', 'country_code'], errors='ignore')
+
+        weather_aggregated = self.aggregate_weather_data(weather_df)
+        track_status_aggregated = self.aggregate_track_status_data(track_status_df)
+        laps_aggregated = self.aggregate_laps_data(laps_df)
 
         # Merge all organized data into a single DataFrame
         print('INFO: Merging all organized data into a single DataFrame')
