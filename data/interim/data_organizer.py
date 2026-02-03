@@ -8,17 +8,145 @@ class DataOrganizer:
         os.makedirs(self.organized_data_dir, exist_ok=True)
 
     # Normalize common column names
-    def standardize_cols(df):
+    def standardize_cols(self, df):
         """
-
-        Args:
-            df (_type_): _description_
-
-        Returns:
-            _type_: _description_
+        Standardizes column names by stripping whitespace, replacing spaces with underscores, and converting to lowercase.
         """
         df.columns = [col.strip().replace(' ', '_').lower() for col in df.columns]
         return df
+
+    def aggregate_weather_data(self, weather_df: pd.DataFrame):
+        """
+        Aggregates weather data by calculating mean, min, max, and variability for key weather parameters.
+        """
+        # Aggregate weather data 
+        print('INFO: Aggregating weather data')
+        print('************ Weather DataFrame Head ***********')
+        print(weather_df.head())
+
+        weather_df = weather_df.drop(columns=['unnamed:_0'], errors='ignore')
+
+        weather_aggregated = weather_df.copy().groupby('sessionkey', as_index=False).agg(
+            air_temp_mean=('airtemp', 'mean'),
+            air_temp_min=('airtemp', 'min'),
+            air_temp_max=('airtemp', 'max'),
+            track_temp_mean=('tracktemp', 'mean'),
+            track_temp_min=('tracktemp', 'min'),
+            track_temp_max=('tracktemp', 'max'),
+            humidity_mean=('humidity', 'mean'),
+            humidity_min=('humidity', 'min'),
+            humidity_max=('humidity', 'max'),
+            wind_speed_mean=('windspeed', 'mean'),
+            wind_speed_min=('windspeed', 'min'),
+            wind_speed_max=('windspeed', 'max'), 
+            rain_any=('rainfall', 'max'),                 # True if any True exists
+            rain_samples_ratio=('rainfall', 'mean'),      # Ratio of True samples
+            rain_samples=('rainfall', 'size'),
+        )
+
+        # Calculate weather variability (standard deviation)
+        weather_variability = (
+            weather_df.copy().groupby('sessionkey', as_index=False)
+            .agg(
+                air_temp_std=('airtemp', 'std'),
+                track_temp_std=('tracktemp', 'std'),
+                humidity_std=('humidity', 'std'),
+                wind_speed_std=('windspeed', 'std'),
+                )
+        )
+
+        # Merge aggregated weather data with variability
+        weather_aggregated = weather_aggregated.merge(weather_variability, on='sessionkey', how='left')
+
+        return weather_aggregated
+    
+    def aggregate_track_status_data(self, track_status_df: pd.DataFrame):
+        """
+        Aggregates track status data by calculating counts and durations of different track statuses.
+        """
+        # Convert Time column of track_status_df
+        print('INFO: Aggregating track status data')
+        print('************ Track Status DataFrame Head ***********')
+        print(track_status_df.head())
+
+        ts = track_status_df.copy()
+        ts = ts.drop(columns=['unnamed:_0'], errors='ignore')
+        ts['time'] = pd.to_timedelta(ts['time'], errors='raise')
+
+        # Sort and compute duration each status lasted
+        ts = ts.sort_values(by=['sessionkey', 'time'])
+        ts['next_time'] = ts.groupby('sessionkey')['time'].shift(-1)
+        ts['duration'] = (ts['next_time'] - ts['time'])
+        # Replace the last row with 0 seconds.
+        ts['duration'] = ts['duration'].fillna(pd.Timedelta(seconds=0))
+
+        # Aggregate track status durations
+        ts['yellow'] = ts['status'].astype(str).eq('2')
+        ts['red'] = ts['status'].astype(str).eq('5')
+        ts['vsc_deployed'] = ts['status'].astype(str).eq('6')
+        ts['vsc_ending'] = ts['status'].astype(str).eq('7')
+        ts['sc_deployed'] = ts['status'].astype(str).eq('4')
+        ts['not_green'] = ts['status'].astype(str).ne('1')
+
+
+        track_status_aggregated = (ts.groupby('sessionkey', as_index=False)
+            .agg(
+                yellow_count=('yellow', 'sum'),
+                red_count=('red', 'sum'),
+                vsc_deployed_count=('vsc_deployed', 'sum'),
+                sc_deployed_count=('sc_deployed', 'sum'),
+                vsc_duration=('duration', lambda x: x[ts.loc[x.index,'vsc_deployed']].sum()),
+                vsc_ending_duration=('duration', lambda x: x[ts.loc[x.index,'vsc_ending']].sum()),
+                sc_duration=('duration', lambda x: x[ts.loc[x.index,'sc_deployed']].sum()),
+                not_green_duration=('duration', lambda x: x[ts.loc[x.index,'not_green']].sum()),
+                total_duration=('duration', 'sum'),
+            )
+        )
+
+        # Convert timedeltas into seconds
+        track_status_aggregated['vsc_duration_in_seconds'] = track_status_aggregated['vsc_duration'].dt.total_seconds()
+        track_status_aggregated['vsc_ending_duration_in_seconds'] = track_status_aggregated['vsc_ending_duration'].dt.total_seconds()
+        track_status_aggregated['sc_duration_in_seconds'] = track_status_aggregated['sc_duration'].dt.total_seconds()
+        track_status_aggregated['not_green_duration_in_seconds'] = track_status_aggregated['not_green_duration'].dt.total_seconds()
+        track_status_aggregated['total_duration_in_seconds'] = track_status_aggregated['total_duration'].dt.total_seconds()
+
+        track_status_aggregated['disruption_ratio'] = track_status_aggregated['not_green_duration_in_seconds'] / track_status_aggregated['total_duration_in_seconds'].replace(0, 1)  # Avoid division by zero
+
+        return track_status_aggregated
+    
+    def aggregate_laps_data(self, laps_df: pd.DataFrame):
+        """
+        Aggregates laps data by calculating statistics for lap times and other performance metrics.
+        """
+        # Aggragate laps data
+        print('INFO: Aggregating laps data')
+        print('************ Laps DataFrame ***********')
+        print(laps_df.head())
+
+        # Drop columns that are not needed for aggregation
+        laps_df = laps_df.drop(columns=['unnamed:_0','deletedreason','lapstartdate','fastf1generated'], errors='ignore')
+
+        # Convert time object columns to seconds
+        laps_aggregated = laps_df.copy()
+        TIME_COLS = ['time', 'laptime', 'pitouttime', 'pitintime', 'sector1time', 'sector2time', 'sector3time',
+            'sector1sessiontime', 'sector2sessiontime', 'sector3sessiontime', 'lapstarttime',
+        ]
+        
+        for col in TIME_COLS:
+            laps_aggregated[col] = pd.to_timedelta(laps_aggregated[col], errors='coerce')
+            laps_aggregated[col + '_seconds'] = laps_aggregated[col].dt.total_seconds()
+       
+        laps_aggregated = (laps_aggregated.groupby('sessionkey', as_index=False)
+            .agg(
+                lap_count=('lapnumber', 'max'),
+                lap_mean=('laptime_seconds', 'mean'),
+                lap_std=('laptime_seconds', 'std'),
+                lap_best=('laptime_seconds', 'min'),
+                lap_median=('laptime_seconds', 'median'),
+            )
+        )
+
+        return laps_aggregated
 
     def organize_session_data(self, year: int, grand_prix: str, session_type: str):
         """
@@ -32,11 +160,11 @@ class DataOrganizer:
         grand_prix = grand_prix.replace(' ', '_')
 
         # Define file paths
-        laps_file = os.path.join(self.raw_data_dir, f"{year}_{grand_prix}_{session_type}_laps.csv")
-        weather_file = os.path.join(self.raw_data_dir, f"{year}_{grand_prix}_{session_type}_weather.csv")
-        results_file = os.path.join(self.raw_data_dir, f"{year}_{grand_prix}_{session_type}_results.csv")
-        track_status_file = os.path.join(self.raw_data_dir, f"{year}_{grand_prix}_{session_type}_track_status.csv")
-        session_info_file = os.path.join(self.raw_data_dir, f"{year}_{grand_prix}_{session_type}_session_info.csv")           
+        laps_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_laps.csv')
+        weather_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_weather.csv')
+        results_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_results.csv')
+        track_status_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_track_status.csv')
+        session_info_file = os.path.join(self.raw_data_dir, f'{year}_{grand_prix}_{session_type}_session_info.csv')           
 
         # Load raw data
         laps_df = pd.read_csv(laps_file)
@@ -45,6 +173,7 @@ class DataOrganizer:
         track_status_df = pd.read_csv(track_status_file)
         session_info_df = pd.read_csv(session_info_file)
 
+        # Standardize column names
         laps_df = self.standardize_cols(laps_df)
         weather_df = self.standardize_cols(weather_df)
         results_df = self.standardize_cols(results_df)
@@ -52,37 +181,44 @@ class DataOrganizer:
         session_info_df = self.standardize_cols(session_info_df)
 
         # Merge data from cv files under a shared key into one DataFrame
-        for merged_df in [laps_df, weather_df, results_df, track_status_df]:
+        print('INFO: Confirm sessionkey to dataframes')
+        print(session_info_df.head())
+        print('Session Key:', session_info_df.copy()['sessionkey'].iloc[0])
+        session_info_df = session_info_df.drop(columns=['unnamed:_0'], errors='ignore')
+
+        print('INFO: Merging dataframes by key')
+        for merged_df in [laps_df.copy(), weather_df.copy(), results_df.copy(), track_status_df.copy()]:
             merged_df['sessionkey'] = session_info_df['sessionkey'].iloc[0]
 
-        
-        # Merge laps and weather data on DriverNumber
-        merged_df = pd.merge(laps_df, weather_df, on='DriverNumber', how='outer')
+        print('INFO: Results DataFrame')
+        print('************ Results DataFrame Head ***********')
+        print(results_df.head())
+        results_df = results_df.drop(columns=['unnamed:_0', 'country_code'], errors='ignore')
 
-        # Merge with results data
-        merged_df = pd.merge(merged_df, results_df, on='DriverNumber', how='outer')
+        weather_aggregated = self.aggregate_weather_data(weather_df)
+        track_status_aggregated = self.aggregate_track_status_data(track_status_df)
+        laps_aggregated = self.aggregate_laps_data(laps_df)
 
-        # Merge with track status data
-        merged_df = pd.merge(merged_df, track_status_df, on='DriverNumber', how='outer')
-
-        # Merge merged_df under a shared keys (GrandPrix,Date,SessionType) into one DataFrame
-        session_info = {
-            'GrandPrix': grand_prix,
-            'Date': merged_df['Date'].iloc[0] if 'Date' in merged_df.columns else None,
-            'SessionType': session_type
-        }
-        session_info_df = pd.DataFrame([session_info])
-        merged_df = pd.merge(merged_df, session_info_df, how='cross')
+        # Merge all organized data into a single DataFrame
+        print('INFO: Merging all organized data into a single DataFrame')
+        merged_df = laps_aggregated.merge(weather_aggregated, on='sessionkey', how='left') \
+            .merge(results_df, on='sessionkey', how='left') \
+            .merge(track_status_aggregated, on='sessionkey', how='left') \
+            .merge(session_info_df, on='sessionkey', how='left')
+        print('INFO: Merged DataFrame info:')
+        print(merged_df.info())
+        print('INFO: Merged DataFrame head:')
+        print(merged_df.head())
 
         # Save new DataFrame to a csv file in organized_data_dir for processing
-        output_file = os.path.join(self.organized_data_dir, f"{year}_{grand_prix}_{session_type}_organized.csv")
+        output_file = os.path.join(self.organized_data_dir, f'{year}_{grand_prix}_{session_type}_organized.csv')
         merged_df.to_csv(output_file, index=False)
-        print(f"INFO: Organized data saved to {output_file}")
+        print(f'INFO: Organized data saved to {output_file}')
 
         return merged_df
         
 
 org = DataOrganizer(raw_data_dir='../raw', organized_data_dir='./')
-result = org.organize_session_data(2023, 'São Paulo Grand Prix', 'FP1')
+result = org.organize_session_data(2018, 'Monaco', 'R')
 
-print(result.head())  
+# print(result.head())  
