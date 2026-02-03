@@ -187,13 +187,13 @@ class DataOrganizer:
         session_info_df = session_info_df.drop(columns=['unnamed:_0'], errors='ignore')
 
         print('INFO: Merging dataframes by key')
-        for merged_df in [laps_df.copy(), weather_df.copy(), results_df.copy(), track_status_df.copy()]:
+        for merged_df in [laps_df, weather_df, results_df, track_status_df]:
             merged_df['sessionkey'] = session_info_df['sessionkey'].iloc[0]
 
         print('INFO: Results DataFrame')
         print('************ Results DataFrame Head ***********')
         print(results_df.head())
-        results_df = results_df.drop(columns=['unnamed:_0', 'country_code'], errors='ignore')
+        results_df = results_df.drop(columns=['unnamed:_0', 'countrycode'], errors='ignore')
 
         weather_aggregated = self.aggregate_weather_data(weather_df)
         track_status_aggregated = self.aggregate_track_status_data(track_status_df)
@@ -220,5 +220,3 @@ class DataOrganizer:
 
 org = DataOrganizer(raw_data_dir='../raw', organized_data_dir='./')
 result = org.organize_session_data(2018, 'Monaco', 'R')
-
-# print(result.head())  
