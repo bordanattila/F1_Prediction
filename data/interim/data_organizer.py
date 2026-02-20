@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from .utils.utils import standardize_cols, drop_columns, CYAN, RESET
+from .utils.utils import standardize_cols, drop_columns, CYAN, RESET, extract_features_from_df
 from .aggregators.weather_aggregate import aggregate_weather_data
 from .aggregators.track_status_aggregate import aggregate_track_status_data
 from .aggregators.laps_aggregate import aggregate_laps_data
@@ -183,7 +183,7 @@ class DataOrganizer:
         weather_df = standardize_cols(weather_df)
         results_df = standardize_cols(results_df)
         track_status_df = standardize_cols(track_status_df)
-        session_info_df = standardize_cols(session_info_df)
+        session_info_df = standardize_cols(session_info_df)        
 
         # Merge data from cv files under a shared key into one DataFrame
         print(f'{CYAN}INFO: Confirm sessionkey to dataframes{RESET}')
@@ -220,6 +220,18 @@ class DataOrganizer:
         output_file = os.path.join(self.organized_data_dir, f'{year}_{grand_prix}_{session_type}_organized.csv')
         merged_df.to_csv(output_file, index=False)
         print(f'{CYAN}INFO: Organized data saved to {output_file}{RESET}')
+
+        # Save list of processed session for further processing
+        list_of_files = os.path.join(self.organized_data_dir, 'list_of_files.csv')
+        if os.path.exists(list_of_files):
+            existing_files_df = pd.read_csv(list_of_files)
+            new_file_entry = pd.DataFrame(f'{year}_{grand_prix}_{session_type}_organized.csv', columns=['filename'])
+            updated_files_df = pd.concat([existing_files_df, new_file_entry], ignore_index=True)
+            updated_files_df.to_csv(list_of_files, index=False)
+        else:
+            new_file_entry = pd.DataFrame(f'{year}_{grand_prix}_{session_type}_organized.csv', columns=['filename'])
+            new_file_entry.to_csv(list_of_files, index=False)
+        
 
         return merged_df
         

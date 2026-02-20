@@ -2,6 +2,13 @@
 This is a script file that loads the csv files from raw/csv_files and utilizes the DataOrganizer class to organize them.
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root))
+
 from data.interim.data_organizer import DataOrganizer
 
 # Color codes
@@ -15,7 +22,10 @@ sessions = ['Australia', 'Bahrain', 'China', 'Azerbaijan', 'Spain', 'Monaco', 'C
          'Hungary', 'Belgium', 'Italy', 'Singapore', 'Russia', 'Japan', 'United States', 'Mexico', 'Brazil', 'Abu Dhabi']
 session_type = ['FP1', 'FP2', 'FP3', 'SQ', 'Q', 'S', 'SS', 'R']
 
-data_organizer = DataOrganizer(raw_data_dir='./data/raw/raw_csv_files', organized_data_dir='./data/interim/organized_csv_files')
+data_organizer = DataOrganizer(
+    raw_data_dir=str(project_root / 'data/raw/raw_csv_files'),
+    organized_data_dir=str(project_root / 'data/interim/organized_csv_files')
+)
 
 # Iterate through the list of races and session types
 for session_name in sessions:

@@ -4,7 +4,6 @@ YELLOW = "\033[33m"
 MAGENTA = "\033[35m"
 RESET = "\033[0m"
 
-
 # Normalize common column names
 def standardize_cols(df):
     """

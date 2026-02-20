@@ -1,9 +1,16 @@
 """
 This is a script that iterates through the list of races and utilises the RawDataCollector class to pull data from FastF1.
 """
-from data.raw.raw_data_collector import RawDataCollector
+import sys
+from pathlib import Path
 import time
 import fastf1 as f1
+
+# Add project root to Python path
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root))
+
+from data.raw.raw_data_collector import RawDataCollector
 
 # Color codes
 CYAN = "\033[36m"
@@ -16,7 +23,7 @@ sessions = ['Australia', 'Bahrain', 'China', 'Azerbaijan', 'Spain', 'Monaco', 'C
          'Hungary', 'Belgium', 'Italy', 'Singapore', 'Russia', 'Japan', 'United States', 'Mexico', 'Brazil', 'Abu Dhabi']
 session_type = ['FP1', 'FP2', 'FP3', 'SQ', 'Q', 'S', 'SS', 'R']
 
-data_collector = RawDataCollector(cache_dir='./')
+data_collector = RawDataCollector(cache_dir=str(project_root))
 
 # Iterate through the list of races and session types
 for session_name in sessions:
@@ -44,10 +51,11 @@ for session_name in sessions:
             continue
         
         # Save the fetched data to CSV files
-        session_data['laps'].to_csv(f'./data/raw/raw_csv_files/{session_year}_{session_name}_{ses_type}_laps.csv')
-        session_data['weather_data'].to_csv(f'./data/raw/raw_csv_files/{session_year}_{session_name}_{ses_type}_weather.csv')
-        session_data['results'].to_csv(f'./data/raw/raw_csv_files/{session_year}_{session_name}_{ses_type}_results.csv')
-        session_data['track_status'].to_csv(f'./data/raw/raw_csv_files/{session_year}_{session_name}_{ses_type}_track_status.csv')
-        session_data['session_info'].to_csv(f'./data/raw/raw_csv_files/{session_year}_{session_name}_{ses_type}_session_info.csv')
+        output_dir = project_root / 'data/raw/raw_csv_files'
+        session_data['laps'].to_csv(output_dir / f'{session_year}_{session_name}_{ses_type}_laps.csv')
+        session_data['weather_data'].to_csv(output_dir / f'{session_year}_{session_name}_{ses_type}_weather.csv')
+        session_data['results'].to_csv(output_dir / f'{session_year}_{session_name}_{ses_type}_results.csv')
+        session_data['track_status'].to_csv(output_dir / f'{session_year}_{session_name}_{ses_type}_track_status.csv')
+        session_data['session_info'].to_csv(output_dir / f'{session_year}_{session_name}_{ses_type}_session_info.csv')
         print(f"{CYAN}INFO: Saved data for {session_year} {session_name} {ses_type} session to CSV files.{RESET}")
         
